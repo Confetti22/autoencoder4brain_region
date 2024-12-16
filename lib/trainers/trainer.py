@@ -35,26 +35,6 @@ def get_three_slice(x):
     x_z = x[radius,:,:]
     return x_x, x_y, x_z
 
-def center_crop_tensor(input_tensor, receptive_field):
-    # Ensure that the input tensor has the shape B*C*D*H*W
-    B, C, D, H, W = input_tensor.shape
-
-    # Extract receptive field dimensions
-    rD, rH, rW = receptive_field
-
-    # Calculate the start and end indices for each dimension
-    start_d = (D - rD) // 2
-    end_d = start_d + rD
-    start_h = (H - rH) // 2
-    end_h = start_h + rH
-    start_w = (W - rW) // 2
-    end_w = start_w + rW
-
-    # Perform the center cropping
-    cropped_tensor = input_tensor[:, :, start_d:end_d, start_h:end_h, start_w:end_w]
-    
-    return cropped_tensor
-
 def unnormalize(img):
     clip_low = 96
     clip_high = 2672
@@ -79,6 +59,11 @@ class Trainer:
         if self.args.main:	
 
             self.writer = get_writer(args)
+
+            cfg_save_path = f"{cfg.OUT}/logs/{cfg.EXP_NAME}/cfg.yaml"
+            with open(cfg_save_path, "w") as f:
+                f.write(cfg.dump())
+
             self.lr_sched_writer = TBWriter(self.writer, 'scalar', 'Schedules/Learning Rate')			
             self.loss_writer = TBWriter(self.writer, 'scalar', 'Loss/total')
 
@@ -159,6 +144,7 @@ class Trainer:
                         merged_x = np.concatenate((x_x, x_y, x_z), axis=1)  
                         merged_re_x = np.concatenate((re_x_x, re_x_y, re_x_z), axis=1)  
                         merged = np.concatenate((merged_x,merged_re_x), axis=0)
+                        merged = (merged - merged.min()) / (merged.max() - merged.min())
                         self.writer.add_image('x and re_x in 3 slice',merged,it,dataformats='HW')
 
 
@@ -187,12 +173,12 @@ class Trainer:
 
             self.train_gen.sampler.set_epoch(epoch)
 
-            save_recon_img_flag = ( epoch % 50 ==0)
+            save_recon_img_flag = ( (epoch+1) % self.cfg.TRAINER.save_every ==0)
             self.train_one_epoch(epoch, lr_schedule,save_recon_img_flag,MSE_loss=True)
 
 
             # === save model === #
-            if self.args.main and (epoch+1)%self.cfg.TRAINER.save_every == 0:
+            if self.args.main and (epoch+1)% self.cfg.TRAINER.save_every == 0:
                 self.save(epoch)
 
     def load_if_available(self):

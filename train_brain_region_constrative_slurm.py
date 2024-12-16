@@ -1,11 +1,9 @@
 import torch.nn as nn
 import torch.multiprocessing as mp
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import  DataLoader
 from torch.utils.data.distributed import DistributedSampler
-import torch
 
 import argparse
-from lib.utils.file import bool_flag
 from lib.utils.distributed import init_dist_node, init_dist_gpu, get_shared_folder
 
 

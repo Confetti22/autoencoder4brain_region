@@ -27,7 +27,7 @@ LOSS:
   temperature: 0.07
 TRAINER:
   name: 'trainer' #Trainer to choose
-  save_every: 50 #save frequency
+  save_every: 2 #save frequency
   epoch: 5000
   fp16: False 
 SOLVER:
