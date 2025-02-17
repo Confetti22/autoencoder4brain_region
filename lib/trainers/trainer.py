@@ -23,6 +23,7 @@ import numpy as np
 import tifffile as tif
 import sys
 import re
+from tqdm.auto import tqdm
 
 import os
 
@@ -42,30 +43,30 @@ def unnormalize(img):
 
 class Trainer:
 
-    def __init__(self, args, cfg, loader, model, loss, optimizer):
+    def __init__(self, args, cfg, train_loader, valid_loader,model, loss, optimizer):
 
         self.args = args
         self.cfg = cfg
-        self.train_gen = loader
+        self.train_gen = train_loader
+        self.valid_gen = valid_loader
         self.model = model
         self.loss = loss
         self.optimizer = optimizer
         self.fp16_scaler = torch.GradScaler('cuda') if cfg.TRAINER.fp16 else None
 
         self.recon_img_dir = "{}/recon_img/{}".format(cfg.OUT, cfg.EXP_NAME)
+        self.valid_recon_img_dir= "{}/valid_recon_img/{}".format(cfg.OUT, cfg.EXP_NAME)
         os.makedirs(self.recon_img_dir,exist_ok=True)
+        os.makedirs(self.valid_recon_img_dir,exist_ok=True)
 
         # === TB writers === #
         if self.args.main:	
 
             self.writer = get_writer(args)
 
-            cfg_save_path = f"{cfg.OUT}/logs/{cfg.EXP_NAME}/cfg.yaml"
-            with open(cfg_save_path, "w") as f:
-                f.write(cfg.dump())
-
             self.lr_sched_writer = TBWriter(self.writer, 'scalar', 'Schedules/Learning Rate')			
             self.loss_writer = TBWriter(self.writer, 'scalar', 'Loss/total')
+            self.valid_loss_writer = TBWriter(self.writer, 'scalar', 'valid:Loss/total')
 
             checkdir("{}/weights/{}/".format(args.out, self.args.model), args.reset)
 
@@ -77,7 +78,7 @@ class Trainer:
         metric_logger = MetricLogger(delimiter="  ")
         header = 'Epoch: [{}/{}]'.format(epoch, self.cfg.TRAINER.epoch)
 
-        for it, (input_data, labels) in enumerate(metric_logger.log_every(self.train_gen, 10, header)):
+        for it, input_data in enumerate(metric_logger.log_every(self.train_gen, 8, header)):
 
             # === Global Iteration === #
             it = len(self.train_gen) * epoch + it
@@ -86,7 +87,7 @@ class Trainer:
                 param_group["lr"] = lr_schedule[it]
 
             # === Inputs === #
-            input_data, labels = input_data.cuda(non_blocking=True), labels.cuda(non_blocking=True)
+            input_data = input_data.cuda(non_blocking=True) 
 
             # === Forward pass === #
             if self.cfg.TRAINER.fp16:
@@ -111,6 +112,7 @@ class Trainer:
                 self.fp16_scaler.update()
             
             loss.backward()
+            
             self.optimizer.step()
 
 
@@ -151,6 +153,63 @@ class Trainer:
 
         metric_logger.synchronize_between_processes()
         print("Averaged stats:", metric_logger)
+    
+    def valid(self,epoch):
+        self.model.eval()
+
+        valid_loss = []
+        input_images = []
+        pred_images = []
+
+        for input_data in tqdm(self.valid_gen):
+
+            input_data = input_data.to('cuda')
+
+            with torch.no_grad():
+                preds = self.model(input_data)
+
+            loss = self.loss(preds, input_data)
+            valid_loss.append(loss.item())
+
+            preds = preds.detach().cpu().numpy()
+            preds = np.squeeze(preds)
+            pred_images.append(preds)
+            input_data = input_data.detach().cpu().numpy()
+            input_data = np.squeeze(input_data)
+            input_images.append(input_data)
+            
+        valid_loss = sum(valid_loss) / len(valid_loss)
+        # === Logging === #
+        torch.cuda.synchronize()
+
+        self.valid_loss_writer(valid_loss, epoch)
+        input_images = np.concatenate(input_images,axis=0)
+        pred_images = np.concatenate(pred_images,axis=0)
+
+        
+        #B*D*H*W
+        x_slices = []
+        re_x_slices = []
+        for idx in range(pred_images.shape[0]):
+            x = input_images[idx]
+            re_x = pred_images[idx]
+
+            x_name = f"{epoch:04d}_{idx:02d}_x.tif"
+            re_x_name = f"{epoch:04d}_{idx:02d}_re_x.tif"
+            tif.imwrite(os.path.join(self.valid_recon_img_dir,x_name) , x)
+            tif.imwrite(os.path.join(self.valid_recon_img_dir,re_x_name) , re_x)
+            x_slices.append(x[int(x.shape[0]//2),:,:])
+            re_x_slices.append(re_x[int(re_x.shape[0]//2),:,:])
+        x_slices = np.concatenate(x_slices,axis=1)
+        re_x_slices = np.concatenate(re_x_slices,axis=1)
+
+        merged = np.concatenate((x_slices,re_x_slices), axis=0)
+        merged = (merged - merged.min()) / (merged.max() - merged.min())
+        self.writer.add_image('valid: x and re_x in 3 slice',merged,epoch,dataformats='HW')
+
+
+
+
 
 
     def fit(self):
@@ -173,13 +232,15 @@ class Trainer:
 
             self.train_gen.sampler.set_epoch(epoch)
 
-            save_recon_img_flag = ( (epoch+1) % self.cfg.TRAINER.save_every ==0)
+
+            save_recon_img_flag = ( (epoch+1) %self.cfg.TRAINER.save_every==0)
             self.train_one_epoch(epoch, lr_schedule,save_recon_img_flag,MSE_loss=True)
 
-
-            # === save model === #
+            # === eval and save model === #
             if self.args.main and (epoch+1)% self.cfg.TRAINER.save_every == 0:
+                self.valid(epoch)
                 self.save(epoch)
+            
 
     def load_if_available(self):
 

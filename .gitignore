@@ -1,4 +1,7 @@
 out/
+logs/
+autoencoder_out/
+clf_out/
 
 data/*
 

@@ -1,0 +1,87 @@
+#16 batch will cuda oom
+#try 12 batch this time
+EXP_NAME : "test_classifer_pretrained" #EXP_NAME used to distinguish each run
+OUT: "out" #path to output directory
+SYSTEM:
+  DEVICE: cuda
+  GPU_IDS: 0
+  NUM_GPUS: 1
+  NUM_CPUS: 2
+MODEL:
+  INPUT_SIZE: [ 128, 128,128 ]
+  ARCHITECTURE: classifier 
+  # BLOCK_TYPE can be 'single' 'double' 'residual' or empty(will use one conv each layer)
+  BLOCK_TYPE:  
+  FILTERS: [32,64,96]
+  IN_PLANES: 1
+  OUT_PLANES: 1 
+  PAD_MODE: 'reflect'
+  ACT_MODE: 'elu'
+  NORM_MODE: 'none'
+  UPSAMPLE_INTERP: False #whether use linear_interpolation to upsample 
+  contrastive_mode: False # not used here
+  pooling_with_conv: [True,True]
+  fc_layer: False 
+  pretrained: True 
+LOSS:
+  #####for reconstruntion loss
+  name: ce 
+  #####for contrastive loss, not used yet
+  n_views: 2
+  temperature: 0.07
+TRAINER:
+  name: 'classify_trainer' #Trainer to choose
+  save_every: 10 #save frequency
+  epoch: 200
+  fp16: False 
+SOLVER:
+  LR_SCHEDULER_NAME: "cosine"
+  NAME: "adam"
+  LR_START: 5e-4
+  LR_END: 1e-6
+  WEIGHT_DECAY: 0.0
+  LR_WARMUP: 10
+DATASET:
+  e5: False 
+  name: 'visor_dataset'
+  batch_per_gpu: 3 
+  num_workers: 0
+  shuffle: True
+  ######for fixed dataset######
+  #for local
+  raw_img_path: "/home/confetti/mnt/data/processed/t1779/t1779.ims" 
+  raw_mask_path: "/home/confetti/mnt/data/processed/t1779/r32_ims_downsample_561_register/registered_atlas.tiff"
+  data_path_dir: "/home/confetti/mnt/data/processed/t1779/two_classes_fi_LD"
+  valid_data_path_dir: "/home/confetti/mnt/data/processed/t1779/test_fi_LD"
+
+  #not used here
+  mask_path_dir: "/home/confetti/mnt/data/processed/t1779/choosen_choosen_mask"
+  #for e5 cluster
+  e5_raw_img_path: "/share/data/VISoR_Reconstruction/SIAT_SIAT/BiGuoqiang/Mouse_Brain/20210131_ZSS_USTC_THY1-YFP_1779_1/Reconstruction_1.0/z00000_c1.ims" 
+  e5_raw_mask_path: "/share/home/shiqiz/data/t1779/r32_ims_downsample_561_register/registered_atlas.tiff"
+  e5_data_path_dir: "/share/home/shiqiz/data/t1779/demo"
+  e5_valid_data_path_dir: "/share/home/shiqiz/data/t1779/skip_gapped_test"
+  e5_mask_path_dir: "/share/home/shiqiz/data/t1779/choosen_choosen_mask" 
+  ######for random generated dataset, not used here ######
+  amount: 1000   #total amount of training data , only valid for radom_generated dataset
+  level: 0
+  channel: 2
+  voxel_size: 1 #(um)
+  zoom_factor: 25
+  #final input_size for network
+  input_size: [82,82,82]
+  min_valid_texture_length:  48 #(um)
+
+  # preprocess_mode: 'tensor' "norm" . "clip_norm"
+  preprocess_mode: 'tensor'
+  preprocess_instance : False
+  # clip will be used in clip, norm and color-brightness adjustment
+  clip_low : 96
+  clip_high : 4000
+  #transform_type : rotation_color_blur:
+  transform_type : [False,False,False]
+  return_mask: True
+  label_in_name: True
+  random: False 
+
+

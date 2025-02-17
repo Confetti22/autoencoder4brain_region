@@ -31,8 +31,8 @@ def conv3d_norm_act(in_planes, planes, kernel_size=(3, 3, 3), stride=1, groups=1
     return nn.Sequential(*layers)
 
 def transconv3d_norm_act(in_planes, planes, kernel_size=(3, 3, 3), stride=1, groups=1,
-                    dilation=(1, 1, 1), padding=(1, 1, 1),output_padding=(1,1,1),pad_mode ='zeros' ,
-                    norm_mode='gn', act_mode='relu', return_list=False):
+                    dilation=(1, 1, 1), padding=(0,0,0),output_padding=(1,1,1),
+                    norm_mode='none', act_mode='elu', return_list=False):
 
     layers = []
     layers += [nn.ConvTranspose3d(in_planes, planes, kernel_size=kernel_size, stride=stride,

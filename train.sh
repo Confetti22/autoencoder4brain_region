@@ -1,8 +1,8 @@
-python train_brain_region_constrative_slurm.py  \
+python train_classifier.py  \
                         -gpus 0 \
-                        -cfg 'config/brain_region_unet.yaml' \
+                        -cfg 'config/classifier.yaml' \
                         -slurm \
-                        -slurm_ngpus 2 \
+                        -slurm_ngpus 1 \
                         -slurm_nnodes 1 \
-                        -slurm_nodelist c003 \
+                        -slurm_nodelist c001 \
                         -slurm_partition compute \
